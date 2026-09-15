@@ -24,12 +24,13 @@ import PhysicsDebug from './PhysicsDebug'
 
 type Props = {
   activeProject: Project | null
+  engineStarted: boolean
   onEnterStop: (project: Project) => void
   onLeaveStop: (project: Project) => void
   resetSignal: number
 }
 
-export default function DriveScene({ activeProject, onEnterStop, onLeaveStop, resetSignal }: Props) {
+export default function DriveScene({ activeProject, engineStarted, onEnterStop, onLeaveStop, resetSignal }: Props) {
   const vehicleRef = useRef<EcctrlVehicleHandle>(null)
 
   return (
@@ -63,8 +64,10 @@ export default function DriveScene({ activeProject, onEnterStop, onLeaveStop, re
             />
             <VehicleInputBridge
               vehicleRef={vehicleRef}
-              locked={activeProject !== null}
-              onExit={() => onLeaveStop(activeProject!)}
+              locked={activeProject !== null || !engineStarted}
+              onExit={() => {
+                if (activeProject) onLeaveStop(activeProject)
+              }}
             />
             <VehicleReset vehicleRef={vehicleRef} resetSignal={resetSignal} spawn={SPAWN_POSITION} />
             <VehicleUpright vehicleRef={vehicleRef} />

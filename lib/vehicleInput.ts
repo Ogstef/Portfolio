@@ -16,3 +16,5 @@ export const keyMap = [
   { name: Controls.steerRight, keys: ['ArrowRight', 'KeyD'] },
   { name: Controls.brake,      keys: ['Space'] },
 ]
+
+export const driveKeys = keyMap.flatMap((entry) => entry.keys)

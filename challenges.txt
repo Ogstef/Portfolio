@@ -1,0 +1,140 @@
+DRIVING PHYSICS & SCENE CHALLENGES — SUMMARY
+==============================================
+(Portfolio project: Next.js + React Three Fiber + Rapier + ecctrl vehicle controller)
+
+1) DIRT vs. ROAD BEHAVING DIFFERENTLY
+--------------------------------------
+- Reported symptom: car felt different driving on the painted road vs. the open dirt.
+- Investigated Ground.tsx, Road.tsx, and the physics collider setup.
+- Found Road.tsx is a purely visual decal mesh — no RigidBody/collider of its own.
+- The only physical driving surface in the whole scene is Ground.tsx's single collider.
+- Conclusion: dirt and road were already physically identical; nothing to "unify."
+- The real complaint turned out to be general handbrake instability, not a surface split.
+- No code change needed for this specific ask — redirected effort to the actual handbrake bug.
+
+2) HANDBRAKE U-TURNS FLIPPING THE CAR
+--------------------------------------
+- Symptom: holding the handbrake (space) during a U-turn would flip the car over.
+- Added a gated debug logger (PhysicsDebug.tsx) that only prints wheel-level physics
+  data while braking, to avoid spamming the console during normal driving.
+- Log evidence showed all 4 wheels were configured as brakeWheel — space acted like
+  a full brake pedal, not a real handbrake.
+- With every wheel locked, there was zero steering grip left to arrest a slide once
+  it started, making a full spin-out (and eventual flip) much easier to trigger.
+- Fix: removed brakeWheel from the front two wheels — only the rears lock now,
+  matching how a real handbrake works.
+- Follow-up log evidence then showed ecctrl's default maxBrakeTorque (40) snapped a
+  wheel's spin to zero in a single physics step — a discontinuity that spiked that
+  wheel's friction impulse 5-10x its neighbors.
+- Softened REAR_BRAKE_TORQUE to 12 so the lock ramps over a few frames instead of one.
+- Also split TIRE_GRIP into front/rear values later (see challenge 7) once it became
+  clear one shared grip constant was hurting the front wheels' launch traction.
+
+3) GUARANTEEING THE CAR CAN NEVER GET STUCK UPSIDE-DOWN
+----------------------------------------------------------
+- Requirement: even if it does flip, it must never leave the player staring at the
+  underside of the world.
+- Built VehicleUpright.tsx: a watchdog that only acts if the car stays tipped past
+  ~70° for a full 0.6 continuous seconds (long enough to ignore a brief ramp-jump
+  tilt that would self-correct on landing).
+- When it fires, it snaps the car upright in place, keeping its heading, using the
+  same discrete setTranslation/setRotation/setLinvel/setAngvel calls the existing
+  manual reset button already used safely.
+- Added a camera-side safety net in FollowCamera.tsx as a second layer: the chase
+  camera only follows the car's yaw (heading), never its pitch/roll, and both the
+  camera and its look target are floored just above ground level.
+- Result: the camera itself literally cannot render the underside of the world,
+  independent of whatever the car's chassis is doing.
+- Also added VehicleYawLimiter.tsx to cap horizontal spin velocity at ~180°/s, since
+  logs showed spins running away to 190-260°/s during hard handbrake holds — a real
+  U-turn still works, it just can't runaway into a multi-rotation spin-out.
+
+4) A REVERTED FIX: LOCKING ROTATION BROKE NORMAL DRIVING
+------------------------------------------------------------
+- First attempt at the anti-flip guarantee was harder: lock pitch/roll outright via
+  Rapier's enabledRotations, leaving only yaw free.
+- Result was much worse than the original bug: even a light throttle tap launched
+  the car into the air.
+- Root cause: each wheel's independent suspension spring normally resolves uneven
+  per-wheel load by letting the body rotate slightly. With rotation locked, the
+  solver had nowhere to put that reaction force except straight into linear velocity.
+- Immediately reverted the change once confirmed broken, rather than trying to
+  tune around it.
+- Lesson carried forward: prefer discrete, occasional corrections (a reset-style
+  snap) over continuous constraints that fight the wheel/suspension solver every frame.
+- This is why VehicleUpright (challenge 3) corrects rarely and only when truly
+  stuck, instead of constraining rotation permanently.
+
+5) DIAGNOSING PHYSICS BUGS WITHOUT BEING ABLE TO DRIVE THE CAR
+-------------------------------------------------------------------
+- Constraint: fixes couldn't be verified by directly playing the game — the workflow
+  had to run through the user reproducing an issue and pasting console output back.
+- Solution: kept PhysicsDebug.tsx as a live, purpose-built telemetry tool instead of
+  guessing blindly — logs per-wheel slip, friction impulse, brake/drive torque,
+  ground contact, plus body speed/yaw-rate/pitch/roll.
+- Iterated the trigger condition as the bugs changed: first gated to "while braking
+  only," later widened to also catch "accelerating hard from near a standstill"
+  once a second class of launch bug appeared.
+- Every fix in this project followed the same loop: reproduce -> read the actual
+  wheel-level numbers -> form a specific hypothesis -> make one targeted change ->
+  re-verify against new logs.
+- This turned "the car flew away, no idea why" reports into concrete, traceable
+  causes (e.g. "one wheel's lng impulse spiked to 3.31 while its neighbors sat
+  under 0.3") instead of trial-and-error tuning.
+
+6) FORWARD + HANDBRAKE HELD TOGETHER LAUNCHING THE CAR
+------------------------------------------------------------
+- Symptom: pressing forward while also holding the handbrake (notably right after
+  exiting the project sign zoom-in) sent the car flying forward instead of just
+  driving off.
+- Root cause: ecctrl's drive controller targets a velocity and keeps commanding
+  more torque the longer it's resisted — holding throttle against the (now
+  softened) brake let that torque command "wind up," then dump all at once the
+  instant it overpowered the brake.
+- Fix: in VehicleInputBridge.tsx, brake now always overrides forward/backward
+  input — a handbrake and a throttle are never allowed to fight each other.
+- Verified fixed by the user directly; no more launch on that specific combo.
+
+7) STANDING-START LAUNCH (WHEELSPIN, THEN LURCH)
+------------------------------------------------------
+- Symptom: even with no brake involved, flooring the throttle from a dead stop
+  produced a violent forward lurch; repeated taps made it worse.
+- First hypothesis: TIRE_GRIP was one shared constant across all 4 wheels, but had
+  only ever needed lowering on the rear wheels (to soften handbrake locks) — the
+  front driven wheels inherited that same reduced grip and couldn't put power down
+  cleanly from a stop.
+- Split the constant into FRONT_TIRE_GRIP (restored higher) and REAR_TIRE_GRIP
+  (kept low) — this helped, but didn't fully resolve the lurch.
+- Went back to carConfig and found the actual root cause: engineHorsepower was set
+  to 150, while ecctrl's own default is 6 — a 25x mismatch against a physics model
+  (gear ratios, torque curves, grip) that's calibrated around that default.
+- That single oversized-engine mismatch is very likely the true root cause behind
+  most of this session's "launched into the air" bugs, not just this one — every
+  wheel-level tuning before it was treating a symptom.
+- Dropped engineHorsepower to 14 (still peppier than default, nowhere near 150).
+- Widened PhysicsDebug.tsx to also log a [LAUNCH] event whenever accelerating hard
+  under ~6 m/s, not just while braking, as a safety net in case it wasn't the
+  whole story.
+- User confirmed the fix worked well after this change.
+
+8) BILLBOARDS LOOKED MESSY + CAR SLID AWAY WHILE PARKED AT A SIGN
+------------------------------------------------------------------------
+- User feedback (with screenshot): the project billboard looked like a hazy,
+  misaligned blob, and the car kept creeping/sliding while a sign was up.
+- Billboard root cause: the picture, title, and the card/glow-rim behind them were
+  each positioned independently with mismatched offsets, so the "frame" never
+  actually wrapped the content.
+- Rewrote ProjectBillboard.tsx with computed layout constants (image and title
+  positions derived from actual content size, not eyeballed).
+- Made the card and accent rim fully opaque instead of semi-transparent glow — a
+  crisp edge instead of a smear.
+- Dropped the redundant tagline text from the 3D sign since the 2D overlay panel
+  already shows it.
+- Retuned FollowCamera's sign-mode look target to aim lower (near the pole base),
+  which pushes the (now shorter) sign into the upper part of the frame, clear of
+  the panel fixed to the bottom of the screen.
+- Stop-sliding root cause: wheel-friction braking alone (already softened for
+  handbrake turns) wasn't strong enough to actually hold the car still.
+- Fix: while a project sign is active, VehicleInputBridge.tsx now directly zeroes
+  the car's horizontal velocity every frame (leaving vertical velocity alone so
+  gravity/suspension still settle it naturally) — a hard, immediate stop.

@@ -7,6 +7,8 @@ import ProjectPanel from '@/components/overlay/ProjectPanel'
 import SkipToResumeLink from '@/components/overlay/SkipToResumeLink'
 import CinematicToggle from '@/components/overlay/CinematicToggle'
 import ResetButton from '@/components/overlay/ResetButton'
+import BootSequence from '@/components/landing/BootSequence'
+import ControlHints from '@/components/landing/ControlHints'
 
 // Load the 3D scene only on the client — Three.js / Rapier won't run in SSR
 const DriveScene = dynamic(() => import('@/components/scene/DriveScene'), {
@@ -22,6 +24,7 @@ export default function HomePage() {
   const [activeProject, setActiveProject] = useState<Project | null>(null)
   const [cinematicsEnabled, setCinematicsEnabled] = useState(true)
   const [resetSignal, setResetSignal] = useState(0)
+  const [engineStarted, setEngineStarted] = useState(false)
 
   const handleReset = useCallback(() => {
     setActiveProject(null)
@@ -43,6 +46,7 @@ export default function HomePage() {
 
       <DriveScene
         activeProject={activeProject}
+        engineStarted={engineStarted}
         onEnterStop={(project) => {
           if (cinematicsEnabled) setActiveProject(project)
         }}
@@ -56,6 +60,8 @@ export default function HomePage() {
         onToggle={() => setCinematicsEnabled((v) => !v)}
       />
       <ResetButton onReset={handleReset} />
+      {engineStarted && <ControlHints />}
+      <BootSequence engineStarted={engineStarted} onStart={() => setEngineStarted(true)} />
     </main>
   )
 }
