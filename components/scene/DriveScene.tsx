@@ -1,0 +1,79 @@
+'use client'
+
+import { Suspense, useRef } from 'react'
+import { Canvas } from '@react-three/fiber'
+import { KeyboardControls, Stars, Sky } from '@react-three/drei'
+import { Physics } from '@react-three/rapier'
+import type { EcctrlVehicleHandle } from 'ecctrl/vehicle'
+import type { Project } from '@/data/projects'
+import { projects } from '@/data/projects'
+import { keyMap } from '@/lib/vehicleInput'
+import Car, { SPAWN_POSITION } from './Car'
+import Ground from './Ground'
+import Road from './Road'
+import StopMarkers from './StopMarkers'
+import FollowCamera from './FollowCamera'
+import VehicleInputBridge from './VehicleInputBridge'
+import VehicleReset from './VehicleReset'
+import VehicleUpright from './VehicleUpright'
+import VehicleYawLimiter from './VehicleYawLimiter'
+import Ramps from './Ramps'
+import Scenery from './Scenery'
+import SkyLife from './SkyLife'
+import PhysicsDebug from './PhysicsDebug'
+
+type Props = {
+  activeProject: Project | null
+  onEnterStop: (project: Project) => void
+  onLeaveStop: (project: Project) => void
+  resetSignal: number
+}
+
+export default function DriveScene({ activeProject, onEnterStop, onLeaveStop, resetSignal }: Props) {
+  const vehicleRef = useRef<EcctrlVehicleHandle>(null)
+
+  return (
+    <KeyboardControls map={keyMap}>
+      <Canvas
+        shadows
+        camera={{ position: [0, 6, -14], fov: 60 }}
+        className="w-full h-full"
+      >
+        <fog attach="fog" args={['#c8601a', 25, 90]} />
+        <ambientLight color="#ffaa60" intensity={0.6} />
+        <directionalLight color="#ffc080" position={[10, 6, -5]} intensity={1.8} castShadow />
+        <directionalLight color="#6040c0" position={[-8, 4, 10]} intensity={0.4} />
+
+        <Sky sunPosition={[1, 0.03, -0.5]} turbidity={12} rayleigh={3} mieCoefficient={0.008} mieDirectionalG={0.85} />
+        <Stars radius={150} depth={60} count={3000} factor={3} fade speed={0.4} />
+        <SkyLife />
+
+        <Suspense fallback={null}>
+          <Physics gravity={[0, -20, 0]}>
+            <Ground />
+            <Road />
+            <Ramps />
+            <Scenery />
+            <Car ref={vehicleRef} />
+            <StopMarkers
+              projects={projects}
+              vehicleRef={vehicleRef}
+              onEnter={onEnterStop}
+              onLeave={onLeaveStop}
+            />
+            <VehicleInputBridge
+              vehicleRef={vehicleRef}
+              locked={activeProject !== null}
+              onExit={() => onLeaveStop(activeProject!)}
+            />
+            <VehicleReset vehicleRef={vehicleRef} resetSignal={resetSignal} spawn={SPAWN_POSITION} />
+            <VehicleUpright vehicleRef={vehicleRef} />
+            <VehicleYawLimiter vehicleRef={vehicleRef} />
+            <PhysicsDebug vehicleRef={vehicleRef} />
+          </Physics>
+          <FollowCamera vehicleRef={vehicleRef} activeProject={activeProject} />
+        </Suspense>
+      </Canvas>
+    </KeyboardControls>
+  )
+}
