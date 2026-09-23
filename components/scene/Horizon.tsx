@@ -1,18 +1,9 @@
 'use client'
 
 import { useMemo } from 'react'
-
-// Deterministic PRNG (mulberry32) — same pattern as Scenery.tsx/SkyLife.tsx so
-// the mountain ring is stable across renders.
-function mulberry32(seed: number) {
-  return function () {
-    seed |= 0
-    seed = (seed + 0x6d2b79f5) | 0
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
+import * as THREE from 'three'
+import { Instances, Instance } from '@react-three/drei'
+import { mulberry32 } from '@/lib/random'
 
 // The track (lib/trackPath.ts) runs roughly z∈[-20,340], x∈[-9,10] — this
 // ring is centered on its rough midpoint, at a radius well beyond any
@@ -24,6 +15,11 @@ const CENTER: [number, number] = [0, 160]
 const BASE_RADIUS = 250
 const RADIUS_JITTER = 30
 const COUNT = 52
+
+// Unit cone scaled per peak; colour comes from the per-instance colour, so
+// the material itself is white.
+const peakGeo = new THREE.ConeGeometry(1, 1, 5)
+const peakMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, fog: true })
 
 type Peak = { x: number; z: number; height: number; radiusXZ: number; rotY: number; dark: number }
 
@@ -49,27 +45,23 @@ function usePeaks(): Peak[] {
   }, [])
 }
 
-function Peak({ x, z, height, radiusXZ, rotY, dark }: Peak) {
-  // Mix between two muted dusk-mountain tones for a bit of silhouette variety.
-  const color = dark > 0.5 ? '#4a3230' : '#5c4038'
-  return (
-    <mesh position={[x, height / 2 - 1, z]} rotation={[0, rotY, 0]} scale={[1, 1, 0.8 + dark * 0.3]}>
-      <coneGeometry args={[radiusXZ, height, 5]} />
-      <meshStandardMaterial color={color} roughness={1} fog />
-    </mesh>
-  )
-}
-
 // Static ring of low-poly mountains enclosing the play area — purely visual
 // (no colliders), sits outside the Physics tree in DriveScene.tsx like Sky/
 // Stars/SkyLife.
 export default function Horizon() {
   const peaks = usePeaks()
   return (
-    <group>
-      {peaks.map((p, i) => (
-        <Peak key={i} {...p} />
+    <Instances geometry={peakGeo} material={peakMat} limit={COUNT} frustumCulled={false}>
+      {peaks.map(({ x, z, height, radiusXZ, rotY, dark }, i) => (
+        <Instance
+          key={i}
+          position={[x, height / 2 - 1, z]}
+          rotation={[0, rotY, 0]}
+          scale={[radiusXZ, height, radiusXZ * (0.8 + dark * 0.3)]}
+          // Mix between two muted dusk-mountain tones for a bit of silhouette variety.
+          color={dark > 0.5 ? '#4a3230' : '#5c4038'}
+        />
       ))}
-    </group>
+    </Instances>
   )
 }

@@ -22,9 +22,12 @@ import GapRamp from './GapRamp'
 import { GAPS } from '@/lib/gapJump'
 import FallSafety from './FallSafety'
 import Scenery from './Scenery'
+import RoadDressing from './RoadDressing'
 import SkyLife from './SkyLife'
 import Horizon from './Horizon'
 import PhysicsDebug from './PhysicsDebug'
+import SunLight from './SunLight'
+import RenderStats from './RenderStats'
 
 type Props = {
   activeProject: Project | null
@@ -46,7 +49,7 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
       >
         <fog attach="fog" args={['#c8601a', 25, 150]} />
         <ambientLight color="#ffaa60" intensity={0.6} />
-        <directionalLight color="#ffc080" position={[10, 6, -5]} intensity={1.8} castShadow />
+        <SunLight vehicleRef={vehicleRef} />
         <directionalLight color="#6040c0" position={[-8, 4, 10]} intensity={0.4} />
 
         <Sky sunPosition={[1, 0.03, -0.5]} turbidity={12} rayleigh={3} mieCoefficient={0.008} mieDirectionalG={0.85} />
@@ -63,6 +66,7 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
               <GapRamp key={i} gap={gap} />
             ))}
             <Scenery />
+            <RoadDressing />
             <Car ref={vehicleRef} />
             <StopMarkers
               projects={projects}
@@ -84,6 +88,7 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
             <PhysicsDebug vehicleRef={vehicleRef} />
           </Physics>
           <FollowCamera vehicleRef={vehicleRef} activeProject={activeProject} />
+          <RenderStats vehicleRef={vehicleRef} />
         </Suspense>
       </Canvas>
     </KeyboardControls>

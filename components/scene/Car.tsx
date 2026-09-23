@@ -1,6 +1,7 @@
 'use client'
 
-import { forwardRef, useEffect } from 'react'
+import { forwardRef, useCallback, useEffect, useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
 import { EcctrlVehicle, ShapeCastWheel, type EcctrlVehicleHandle } from 'ecctrl/vehicle'
 import { CuboidCollider } from '@react-three/rapier'
 import { useGLTF } from '@react-three/drei'
@@ -79,8 +80,51 @@ const REAR_BRAKE_TORQUE = 12
 // physics model expects.
 const ENGINE_HORSEPOWER = 14
 
+// The GLB's own wheels have their bottoms at model y=0, but the physics
+// wheels (whose rays hold the chassis up) rest ~0.78 below the chassis
+// origin: rayLength+rayShapeR (0.9) minus spring compression at ecctrl's
+// default springK. The old fixed -0.35 offset left the whole car hovering
+// ~0.4 above the road — invisible until SunLight made the shadow under it
+// follow the car. Instead of another guessed constant, the body is placed
+// each frame at the grounded wheels' measured ray distance, so the model's
+// tyres always touch the ground and the body rides the real suspension.
+const REST_GROUND_DIST = 0.78 // initial guess until the first ray hits land
+const BODY_LERP_RATE = 15
+
+type RayHit = { timeOfImpact: number } | null
+
 const Car = forwardRef<EcctrlVehicleHandle>(function Car(_props, ref) {
   const { scene } = useGLTF('/models/car.glb')
+  const vehicle = useRef<EcctrlVehicleHandle | null>(null)
+  const body = useRef<THREE.Group>(null)
+  const groundDist = useRef(REST_GROUND_DIST)
+
+  const setRefs = useCallback(
+    (handle: EcctrlVehicleHandle | null) => {
+      vehicle.current = handle
+      if (typeof ref === 'function') ref(handle)
+      else if (ref) ref.current = handle
+    },
+    [ref],
+  )
+
+  useFrame((_, delta) => {
+    const v = vehicle.current
+    const b = body.current
+    if (!v || !b) return
+    let sum = 0
+    let n = 0
+    for (const w of v.wheelsInfo.values()) {
+      const hit = w.current?.rayHit as RayHit | undefined
+      if (hit) {
+        sum += hit.timeOfImpact
+        n++
+      }
+    }
+    // Airborne: hold the last grounded height rather than snapping.
+    if (n > 0) groundDist.current = sum / n
+    b.position.y = THREE.MathUtils.lerp(b.position.y, -groundDist.current, 1 - Math.exp(-BODY_LERP_RATE * delta))
+  })
 
   useEffect(() => {
     scene.traverse((child) => {
@@ -93,7 +137,7 @@ const Car = forwardRef<EcctrlVehicleHandle>(function Car(_props, ref) {
 
   return (
     <EcctrlVehicle
-      ref={ref}
+      ref={setRefs}
       position={SPAWN_POSITION}
       angularDamping={ANGULAR_DAMPING}
       carConfig={{
@@ -105,8 +149,10 @@ const Car = forwardRef<EcctrlVehicleHandle>(function Car(_props, ref) {
       {/* Physics body — required for mass/collision */}
       <CuboidCollider args={[0.9, 0.3, 2]} />
 
-      {/* Kenney sedan-sports body — shifted down so it sits on the physics wheels */}
-      <primitive object={scene} rotation={[0, 0, 0]} position={[0, -0.35, 0]} />
+      {/* Kenney sedan-sports body — height driven per frame so its tyres touch the ground (see REST_GROUND_DIST) */}
+      <group ref={body} position={[0, -REST_GROUND_DIST, 0]}>
+        <primitive object={scene} />
+      </group>
 
       {/* ShapeCastWheels — physics + rolling visual tires.
           groundDetection="rayCast" instead of the default "shapeCast": logged

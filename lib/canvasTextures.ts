@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { Project } from '@/data/projects'
+import { mulberry32 } from './random'
 
 // Procedurally-drawn textures — no external image/network dependency, so the
 // site stays fully self-contained (no third-party CDN that could go down).
@@ -143,4 +144,225 @@ export function getCloudPuffTexture(): THREE.CanvasTexture {
   cloudPuffTexture.colorSpace = THREE.SRGBColorSpace
   cloudPuffTexture.needsUpdate = true
   return cloudPuffTexture
+}
+
+// Tileable value noise: a random lattice with `period` cells per side whose
+// indices wrap, so the result tiles seamlessly under RepeatWrapping. Several
+// periods are summed (octaves) with halving weights, normalised to [0,1].
+function tileableNoise(size: number, periods: number[], rand: () => number): Float32Array {
+  const out = new Float32Array(size * size)
+  let weight = 1
+  let totalWeight = 0
+  for (const period of periods) {
+    const lattice = Array.from({ length: period * period }, rand)
+    const cell = size / period
+    for (let y = 0; y < size; y++) {
+      const gy = y / cell
+      const y0 = Math.floor(gy)
+      const ty = gy - y0
+      const sy = ty * ty * (3 - 2 * ty)
+      const r0 = (y0 % period) * period
+      const r1 = ((y0 + 1) % period) * period
+      for (let x = 0; x < size; x++) {
+        const gx = x / cell
+        const x0 = Math.floor(gx)
+        const tx = gx - x0
+        const sx = tx * tx * (3 - 2 * tx)
+        const c0 = x0 % period
+        const c1 = (x0 + 1) % period
+        const top = lattice[r0 + c0] + (lattice[r0 + c1] - lattice[r0 + c0]) * sx
+        const bot = lattice[r1 + c0] + (lattice[r1 + c1] - lattice[r1 + c0]) * sx
+        out[y * size + x] += (top + (bot - top) * sy) * weight
+      }
+    }
+    totalWeight += weight
+    weight *= 0.5
+  }
+  for (let i = 0; i < out.length; i++) out[i] /= totalWeight
+  return out
+}
+
+// Piecewise-linear lookup through a list of RGB stops for t in [0,1].
+function rampColor(stops: Array<[number, number, number]>, t: number): [number, number, number] {
+  const f = THREE.MathUtils.clamp(t, 0, 1) * (stops.length - 1)
+  const i = Math.min(Math.floor(f), stops.length - 2)
+  const k = f - i
+  const a = stops[i]
+  const b = stops[i + 1]
+  return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]
+}
+
+// Contrast-stretch noise around 0.5 — summed octaves cluster near the
+// middle, which would otherwise wash every tone ramp out to its centre.
+function stretch(n: number, amount: number) {
+  return 0.5 + (n - 0.5) * amount
+}
+
+function finishTiledTexture(canvas: HTMLCanvasElement) {
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.anisotropy = 8
+  texture.needsUpdate = true
+  return texture
+}
+
+let groundTexture: THREE.CanvasTexture | null = null
+
+// Desert dirt: layered value noise across four sand/dirt tones plus pebble
+// specks. Tones straddle the old flat #5a3e28 so the mip-mapped average (all
+// you see near the fog line) still matches the fog tint it was tuned with.
+export function getGroundTexture(): THREE.CanvasTexture {
+  if (groundTexture) return groundTexture
+
+  const size = 512
+  const rand = mulberry32(5150)
+  const macro = tileableNoise(size, [4, 8, 16], rand)
+  const grain = tileableNoise(size, [64, 128], rand)
+  const tones: Array<[number, number, number]> = [
+    [72, 48, 30],
+    [86, 59, 38],
+    [98, 69, 45],
+    [112, 82, 55],
+  ]
+
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const img = ctx.createImageData(size, size)
+  for (let i = 0; i < size * size; i++) {
+    const [r, g, b] = rampColor(tones, stretch(macro[i], 2.2))
+    const d = (grain[i] - 0.5) * 22
+    img.data[i * 4] = r + d
+    img.data[i * 4 + 1] = g + d * 0.85
+    img.data[i * 4 + 2] = b + d * 0.7
+    img.data[i * 4 + 3] = 255
+  }
+  ctx.putImageData(img, 0, 0)
+
+  // Pebbles — drawn at x/y ±size too so ones straddling an edge wrap.
+  for (let i = 0; i < 420; i++) {
+    const x = rand() * size
+    const y = rand() * size
+    const r = 0.6 + rand() * 1.8
+    const light = rand() < 0.6
+    ctx.fillStyle = light
+      ? `rgba(150,120,90,${0.35 + rand() * 0.4})`
+      : `rgba(40,26,16,${0.35 + rand() * 0.4})`
+    for (const ox of [-size, 0, size]) {
+      for (const oy of [-size, 0, size]) {
+        ctx.beginPath()
+        ctx.arc(x + ox, y + oy, r, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  }
+
+  groundTexture = finishTiledTexture(canvas)
+  return groundTexture
+}
+
+let asphaltTexture: THREE.CanvasTexture | null = null
+
+// Worn asphalt: dark grey noise, pale aggregate flecks, two faint darker
+// wheel-wear bands per lane and a few hairline cracks. U runs across the
+// road (one tile = the full width), V along it.
+export function getAsphaltTexture(): THREE.CanvasTexture {
+  if (asphaltTexture) return asphaltTexture
+
+  const size = 512
+  const rand = mulberry32(9090)
+  const macro = tileableNoise(size, [4, 8], rand)
+  const grain = tileableNoise(size, [128, 256], rand)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const img = ctx.createImageData(size, size)
+  // Wheel tracks sit ~1/8 and ~3/8 across each half of the road.
+  const bands = [0.14, 0.36, 0.64, 0.86]
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x
+      const u = x / size
+      const wear = bands.reduce((acc, c) => acc + Math.exp(-(((u - c) / 0.035) ** 2)), 0)
+      const base = 30 + stretch(macro[i], 1.8) * 10 - wear * 5
+      const n = (grain[i] - 0.5) * 16
+      img.data[i * 4] = base + n
+      img.data[i * 4 + 1] = base + n
+      img.data[i * 4 + 2] = base + n + 5
+      img.data[i * 4 + 3] = 255
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+
+  for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = `rgba(150,150,160,${0.12 + rand() * 0.2})`
+    ctx.fillRect(rand() * size, rand() * size, 1 + rand(), 1 + rand())
+  }
+
+  // Cracks: jittery polylines, drawn at y±size so they wrap along the road.
+  ctx.lineCap = 'round'
+  for (let c = 0; c < 5; c++) {
+    const pts: Array<[number, number]> = []
+    let x = 60 + rand() * (size - 120)
+    let y = rand() * size
+    const heading = rand() * Math.PI * 2
+    const len = 8 + Math.floor(rand() * 10)
+    for (let k = 0; k < len; k++) {
+      pts.push([x, y])
+      const a = heading + (rand() - 0.5) * 1.4
+      x += Math.cos(a) * 10
+      y += Math.sin(a) * 10
+    }
+    ctx.strokeStyle = `rgba(8,8,12,${0.5 + rand() * 0.3})`
+    ctx.lineWidth = 0.8 + rand() * 1.2
+    for (const oy of [-size, 0, size]) {
+      ctx.beginPath()
+      pts.forEach(([px, py], k) => (k === 0 ? ctx.moveTo(px, py + oy) : ctx.lineTo(px, py + oy)))
+      ctx.stroke()
+    }
+  }
+
+  asphaltTexture = finishTiledTexture(canvas)
+  return asphaltTexture
+}
+
+let blotchTexture: THREE.CanvasTexture | null = null
+
+// Soft irregular blob (alpha only, white) for large dirt colour patches —
+// a radial falloff whose edge is broken up by noise so no two instances
+// read as a perfect circle once rotated/stretched.
+export function getBlotchTexture(): THREE.CanvasTexture {
+  if (blotchTexture) return blotchTexture
+
+  const size = 256
+  const rand = mulberry32(3131)
+  const noise = tileableNoise(size, [6, 12, 24], rand)
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const img = ctx.createImageData(size, size)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x
+      const d = Math.hypot(x / size - 0.5, y / size - 0.5) * 2
+      const edge = 0.55 + (noise[i] - 0.5) * 0.7
+      const a = THREE.MathUtils.clamp((edge - d) / 0.35, 0, 1)
+      img.data[i * 4] = 255
+      img.data[i * 4 + 1] = 255
+      img.data[i * 4 + 2] = 255
+      img.data[i * 4 + 3] = a * a * 255
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+
+  blotchTexture = new THREE.CanvasTexture(canvas)
+  blotchTexture.colorSpace = THREE.SRGBColorSpace
+  blotchTexture.needsUpdate = true
+  return blotchTexture
 }
