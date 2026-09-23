@@ -18,8 +18,12 @@ import VehicleReset from './VehicleReset'
 import VehicleUpright from './VehicleUpright'
 import VehicleYawLimiter from './VehicleYawLimiter'
 import Ramps from './Ramps'
+import GapRamp from './GapRamp'
+import { GAPS } from '@/lib/gapJump'
+import FallSafety from './FallSafety'
 import Scenery from './Scenery'
 import SkyLife from './SkyLife'
+import Horizon from './Horizon'
 import PhysicsDebug from './PhysicsDebug'
 
 type Props = {
@@ -40,7 +44,7 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
         camera={{ position: [0, 6, -14], fov: 60 }}
         className="w-full h-full"
       >
-        <fog attach="fog" args={['#c8601a', 25, 90]} />
+        <fog attach="fog" args={['#c8601a', 25, 150]} />
         <ambientLight color="#ffaa60" intensity={0.6} />
         <directionalLight color="#ffc080" position={[10, 6, -5]} intensity={1.8} castShadow />
         <directionalLight color="#6040c0" position={[-8, 4, 10]} intensity={0.4} />
@@ -48,12 +52,16 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
         <Sky sunPosition={[1, 0.03, -0.5]} turbidity={12} rayleigh={3} mieCoefficient={0.008} mieDirectionalG={0.85} />
         <Stars radius={150} depth={60} count={3000} factor={3} fade speed={0.4} />
         <SkyLife />
+        <Horizon />
 
         <Suspense fallback={null}>
           <Physics gravity={[0, -20, 0]}>
             <Ground />
             <Road />
             <Ramps />
+            {GAPS.map((gap, i) => (
+              <GapRamp key={i} gap={gap} />
+            ))}
             <Scenery />
             <Car ref={vehicleRef} />
             <StopMarkers
@@ -70,6 +78,7 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
               }}
             />
             <VehicleReset vehicleRef={vehicleRef} resetSignal={resetSignal} spawn={SPAWN_POSITION} />
+            <FallSafety vehicleRef={vehicleRef} />
             <VehicleUpright vehicleRef={vehicleRef} />
             <VehicleYawLimiter vehicleRef={vehicleRef} />
             <PhysicsDebug vehicleRef={vehicleRef} />

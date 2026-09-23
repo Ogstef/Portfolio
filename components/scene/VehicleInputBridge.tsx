@@ -18,7 +18,12 @@ export default function VehicleInputBridge({ vehicleRef, locked, onExit }: Props
 
   useFrame(() => {
     const v = vehicleRef.current
-    if (!v) return
+    // v.body (the underlying Rapier rigid body) can still be null for the
+    // first frame or two after the vehicle handle itself exists — the
+    // RigidBody's ref callback hasn't fired yet. Locked mode below runs from
+    // the very first frame (before "Start Engine" is even clicked), so this
+    // isn't a rare race — skip the frame rather than crash on it.
+    if (!v || !v.body) return
 
     const { forward, backward, steerLeft, steerRight, brake } = getKeys()
 

@@ -46,15 +46,9 @@ export default function StopMarkers({ projects, vehicleRef, onEnter, onLeave }: 
 
   return (
     <>
-      {projects.map((p) => {
-        const [, py, pz] = p.position as [number, number, number]
-        return (
-          // Billboard sits at signX (off road), trigger zone stays at road centre (x=0)
-          <group key={p.id} position={[0, py, pz]}>
-            <ProjectBillboard project={p} />
-          </group>
-        )
-      })}
+      {projects.map((p) => (
+        <ProjectBillboard key={p.id} project={p} />
+      ))}
     </>
   )
 }

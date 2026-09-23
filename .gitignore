@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+ENVIRONMENT_PLAN.md
+.gitignore
+PRE_DEPLOY_CHECKLIST.txt

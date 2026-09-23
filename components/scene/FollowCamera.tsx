@@ -21,7 +21,6 @@ const UP = new THREE.Vector3(0, 1, 0)
 const FORWARD = new THREE.Vector3(0, 0, 1)
 
 // Cinematic sign mode
-const SIGN_APPROACH   = 14  // how far across the road the camera parks
 const SIGN_LOOK_Y     = 3   // look lower than the sign itself so the (higher) sign
                              // lands in the upper part of the frame, clear of the
                              // fixed-bottom 2D project panel instead of overlapping it
@@ -44,13 +43,12 @@ export default function FollowCamera({ vehicleRef, activeProject }: Props) {
     if (!v) return
 
     if (activeProject) {
-      const [, sy, sz] = activeProject.position as [number, number, number]
-      const sx = activeProject.signX
+      const sp = new THREE.Vector3(...activeProject.signPosition)
+      const cam = new THREE.Vector3(...activeProject.cameraApproach)
 
       // Camera parks on the opposite side of the road from the sign, slightly back
-      const approachX = sx + (sx < 0 ? SIGN_APPROACH : -SIGN_APPROACH)
-      signCamPos.current.set(approachX, 5, sz - 4)
-      signLookPos.current.set(sx, sy + SIGN_LOOK_Y, sz)
+      signCamPos.current.set(cam.x, cam.y, cam.z)
+      signLookPos.current.set(sp.x, sp.y + SIGN_LOOK_Y, sp.z)
 
       camera.position.lerp(signCamPos.current, LERP_POS_SIGN)
       lookTarget.current.lerp(signLookPos.current, LERP_LOOK_SIGN)

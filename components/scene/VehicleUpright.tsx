@@ -39,7 +39,9 @@ export default function VehicleUpright({ vehicleRef }: Props) {
 
   useFrame((_, delta) => {
     const v = vehicleRef.current
-    if (!v) return
+    // v.body can be null for the first frame or two after the vehicle
+    // handle itself exists, before the RigidBody's ref callback fires.
+    if (!v || !v.body) return
 
     if (v.bodyYAxis.y >= TILT_THRESHOLD) {
       tiltSeconds.current = 0

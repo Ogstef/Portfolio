@@ -40,7 +40,7 @@ export default function ProjectBillboard({ project: p }: Props) {
   })
 
   return (
-    <group position={[p.signX, 0, 0]}>
+    <group position={p.signPosition}>
       {/* Pole */}
       <mesh position={[0, 3, 0]} castShadow>
         <cylinderGeometry args={[0.07, 0.12, 6, 8]} />

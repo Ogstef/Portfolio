@@ -19,8 +19,8 @@ function mulberry32(seed: number) {
 type Puff = { x: number; y: number; z: number; scale: number; opacity: number }
 type Cluster = { puffs: Puff[]; z: number; speed: number; startX: number }
 
-const CLOUD_COUNT = 6
-const FIELD_WIDTH = 260 // clouds wrap within this span so they never visibly "vanish"
+const CLOUD_COUNT = 8
+const FIELD_WIDTH = 300 // clouds wrap within this span so they never visibly "vanish"
 
 function useClusters(): Cluster[] {
   return useMemo(() => {
@@ -79,7 +79,7 @@ export default function SkyLife() {
       {clusters.map((c, i) => (
         <CloudCluster key={i} cluster={c} />
       ))}
-      <Sparkles count={140} scale={[70, 12, 200]} position={[0, 6, 90]} size={2.5} speed={0.15} opacity={0.35} color="#ffcf8a" noise={1} />
+      <Sparkles count={180} scale={[80, 12, 300]} position={[0, 6, 120]} size={2.5} speed={0.15} opacity={0.35} color="#ffcf8a" noise={1} />
     </>
   )
 }

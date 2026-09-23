@@ -20,7 +20,9 @@ type Props = {
 export default function VehicleYawLimiter({ vehicleRef }: Props) {
   useFrame(() => {
     const v = vehicleRef.current
-    if (!v) return
+    // v.body can be null for the first frame or two after the vehicle
+    // handle itself exists, before the RigidBody's ref callback fires.
+    if (!v || !v.body) return
 
     const av = v.currAngVel
     if (Math.abs(av.y) <= MAX_YAW_RATE) return

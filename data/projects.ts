@@ -1,9 +1,14 @@
+import { getFrameAtDistance } from '@/lib/trackPath'
+import { SIGN_APPROACH } from '@/components/scene/sceneConstants'
+
 export type Project = {
   id: string
   title: string
-  position: [number, number, number]
+  position: [number, number, number]        // road-centerline trigger point (arc-length distance baked to world XYZ)
+  signPosition: [number, number, number]     // baked world position of the sign/pole anchor
+  cameraApproach: [number, number, number]   // baked world position FollowCamera parks at in sign mode
   triggerRadius: number
-  signX: number   // billboard X offset: -7 = left of road, +7 = right
+  signX: number   // billboard offset from centerline along the curve's "right" vector: -7 = left of road, +7 = right
   accent: string  // brand color for this project's billboard + thumbnail
   tagline: string
   description: string
@@ -12,11 +17,29 @@ export type Project = {
   links?: { label: string; url: string }[]
 }
 
+// The only literals a human tunes per project: the arc-length distance along
+// the track and signX. Everything else is derived from the curve's frame at
+// that distance (see lib/trackPath.ts).
+function stopAt(distance: number, signX: number) {
+  const { position, tangent, right } = getFrameAtDistance(distance)
+  const side = Math.sign(signX)
+  const signPos = position.clone().addScaledVector(right, signX)
+  const cameraApproach = position
+    .clone()
+    .addScaledVector(right, -side * SIGN_APPROACH)
+    .addScaledVector(tangent, -4)
+  return {
+    position: [position.x, position.y, position.z] as [number, number, number],
+    signPosition: [signPos.x, signPos.y, signPos.z] as [number, number, number],
+    cameraApproach: [cameraApproach.x, 5, cameraApproach.z] as [number, number, number],
+  }
+}
+
 export const projects: Project[] = [
   {
     id: 'ledgerx',
     title: 'LedgerX',
-    position: [0, 0, 30],
+    ...stopAt(30, -7),
     triggerRadius: 8,
     signX: -7,
     accent: '#38bdf8',
@@ -34,7 +57,7 @@ export const projects: Project[] = [
   {
     id: 'eurobank-crm',
     title: 'Eurobank CRM Migration',
-    position: [0, 0, 90],
+    ...stopAt(90, 7),
     triggerRadius: 8,
     signX: 7,
     accent: '#f97316',
@@ -52,7 +75,9 @@ export const projects: Project[] = [
   {
     id: 'trigono',
     title: 'Trigono Website',
-    position: [0, 0, 130],
+    // Past TRIGONO_GAP's downRampEnd (172) — this stop is only reachable by
+    // clearing that canyon jump (see lib/gapJump.ts).
+    ...stopAt(187, -7),
     triggerRadius: 8,
     signX: -7,
     accent: '#22c55e',
@@ -70,7 +95,10 @@ export const projects: Project[] = [
   {
     id: 'gumroad',
     title: 'Gumroad Storefront',
-    position: [0, 0, 170],
+    // Past GUMROAD_GAP's downRampEnd (292) — this stop is only reachable by
+    // clearing that canyon jump (see lib/gapJump.ts); there's no ground to
+    // drive around it on.
+    ...stopAt(307, 7),
     triggerRadius: 8,
     signX: 7,
     accent: '#a855f7',
@@ -84,8 +112,8 @@ export const projects: Project[] = [
     ],
     stack: ['HTML', 'JavaScript', 'localStorage', 'Gumroad'],
     links: [
-      { label: 'X/Twitter thread', url: 'https://x.com' },
-      { label: 'Dev.to article', url: 'https://dev.to' },
+      { label: 'X/Twitter thread', url: 'https://x.com/theDogeg48/status/2089769164093161767' },
+      { label: 'Dev.to article', url: 'https://dev.to/thedogeg48/java-spring-boot-performance-issues-and-solutions-5ege' },
     ],
   },
 ]
