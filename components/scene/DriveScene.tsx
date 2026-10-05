@@ -24,6 +24,7 @@ import FallSafety from './FallSafety'
 import Scenery from './Scenery'
 import RoadDressing from './RoadDressing'
 import CanyonWalls from './CanyonWalls'
+import StopDiorama from './StopDiorama'
 import SkyLife from './SkyLife'
 import Horizon from './Horizon'
 import PhysicsDebug from './PhysicsDebug'
@@ -71,6 +72,7 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
             </Suspense>
             <RoadDressing />
             <CanyonWalls />
+            <StopDiorama />
             <Car ref={vehicleRef} />
             <StopMarkers
               projects={projects}

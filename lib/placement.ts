@@ -17,7 +17,7 @@ const ROAD_CLEAR = 6
 const ROAD_CLEAR_TALL = 7.5
 const TALL = 1 // metres — anything above this can block a cutscene view
 const SPAWN_RADIUS = 8
-const SIGN_RADIUS = 16
+const SIGN_RADIUS = 18 // clears each stop's diorama (StopDiorama.tsx reaches ~17.5 m from the sign)
 const CAMERA_CORRIDOR = 3 // half-width of the camera→sign sightline
 
 // Beyond either end of the road, s keeps going in a straight line along the

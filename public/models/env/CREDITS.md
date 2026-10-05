@@ -43,16 +43,23 @@ the Draco decoder, and drei's `useGLTF` already bundles the meshopt decoder.
 ## props.glb
 
 Source: **Car Kit** by Kenney — https://kenney.nl/assets/car-kit (the copy
-already in this repo under `kenney_car-kit/`)
+already in this repo under `kenney_car-kit/`, `Models/GLB format/`)
 Licence: CC0 1.0 (per `kenney_car-kit/License.txt`)
 
 | Node | Used as |
 |---|---|
 | `cone` | traffic cones lining each gap-jump run-in |
+| `truck` | LedgerX vault — armoured-car stand-in |
+| `sedan`, `suv` | Eurobank outpost — parked cars |
+| `delivery` | Trigono diner — food truck |
+| `box` | Gumroad camp — crate stack |
 
-Pipeline: `gltf-transform copy` (embeds `Textures/colormap.png`), scene
-renamed to `env-props` (same name-collision reason as above), then
-`gltf-transform meshopt`.
+Pipeline: a small gltf-transform script wraps each model's top-level
+nodes (body, wheels, door…) under one parent named after the file, merges
+them into one scene named `env-props` (not a model name — GLTFLoader keeps
+names unique and would rename the colliding node), dedups the shared
+`colormap.png` atlas, then `gltf-transform meshopt`. At runtime each model
+is baked into a single geometry so it costs one draw call.
 
 ## Procedural stand-ins (no CC0 model found)
 

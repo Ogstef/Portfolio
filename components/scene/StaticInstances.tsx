@@ -1,7 +1,8 @@
 'use client'
 
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 // Static (set-once) instanced drawing for environment props — one draw call
 // per geometry/material however many copies. Unlike drei <Instances>, the
@@ -58,9 +59,53 @@ export default function StaticInstances({ geometry, material, matrices, castShad
   )
 }
 
-// Instances every mesh under a GLB node at each placement. Each sub-mesh's
-// own transform (including meshopt's dequantisation scale/offset, which
-// lives on the node) is folded into its instance matrices.
+// meshopt-quantised attributes are normalised ints; transforming those in
+// place would re-quantise and clip, so expand to float first.
+function toFloat(attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) {
+  const n = attr.itemSize
+  const out = new Float32Array(attr.count * n)
+  for (let i = 0; i < attr.count; i++) {
+    out[i * n] = attr.getX(i)
+    if (n > 1) out[i * n + 1] = attr.getY(i)
+    if (n > 2) out[i * n + 2] = attr.getZ(i)
+  }
+  return new THREE.BufferAttribute(out, n)
+}
+
+const bakeCache = new WeakMap<THREE.Object3D, { geometry: THREE.BufferGeometry; material: THREE.Material }>()
+
+// Merges every mesh under a GLB node (body, wheels, doors…) into one
+// geometry in the node's own frame, so a multi-part model is one draw.
+// Kenney kit models all share one texture-atlas material, which is what
+// makes this valid — the first mesh's material is used for the lot.
+export function bakeModel(node: THREE.Object3D) {
+  const cached = bakeCache.get(node)
+  if (cached) return cached
+  node.updateWorldMatrix(true, true)
+  const toLocal = new THREE.Matrix4().copy(node.parent?.matrixWorld ?? new THREE.Matrix4()).invert()
+  const parts: THREE.BufferGeometry[] = []
+  let material: THREE.Material | null = null
+  node.traverse((o) => {
+    const mesh = o as THREE.Mesh
+    if (!mesh.isMesh) return
+    material ??= mesh.material as THREE.Material
+    const src = mesh.geometry
+    let g = new THREE.BufferGeometry()
+    g.setAttribute('position', toFloat(src.attributes.position))
+    g.setAttribute('normal', toFloat(src.attributes.normal))
+    if (src.attributes.uv) g.setAttribute('uv', toFloat(src.attributes.uv))
+    if (src.index) g.setIndex(Array.from(src.index.array))
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(toLocal, mesh.matrixWorld))
+    if (g.index) g = g.toNonIndexed()
+    parts.push(g)
+  })
+  const baked = { geometry: mergeGeometries(parts)!, material: material! }
+  bakeCache.set(node, baked)
+  return baked
+}
+
+// Instances a whole GLB model (all its parts, baked into one geometry) at
+// each placement — one draw call per model regardless of part count.
 export function GltfInstances({
   node,
   matrices,
@@ -72,28 +117,14 @@ export function GltfInstances({
   castShadow?: boolean
   receiveShadow?: boolean
 }) {
-  const parts = useMemo(() => {
-    node.updateWorldMatrix(true, true)
-    const rootInverse = new THREE.Matrix4().copy(node.parent?.matrixWorld ?? new THREE.Matrix4()).invert()
-    const out: Array<{ geometry: THREE.BufferGeometry; material: THREE.Material; matrices: THREE.Matrix4[] }> = []
-    node.traverse((o) => {
-      const mesh = o as THREE.Mesh
-      if (!mesh.isMesh) return
-      const local = new THREE.Matrix4().multiplyMatrices(rootInverse, mesh.matrixWorld)
-      out.push({
-        geometry: mesh.geometry,
-        material: mesh.material as THREE.Material,
-        matrices: matrices.map((m) => m.clone().multiply(local)),
-      })
-    })
-    return out
-  }, [node, matrices])
-
+  const { geometry, material } = bakeModel(node)
   return (
-    <>
-      {parts.map((part, i) => (
-        <StaticInstances key={i} {...part} castShadow={castShadow} receiveShadow={receiveShadow} />
-      ))}
-    </>
+    <StaticInstances
+      geometry={geometry}
+      material={material}
+      matrices={matrices}
+      castShadow={castShadow}
+      receiveShadow={receiveShadow}
+    />
   )
 }

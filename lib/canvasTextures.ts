@@ -544,3 +544,77 @@ export function getChevronTexture(dir: 'left' | 'right'): THREE.CanvasTexture {
   chevronTextures.set(dir, texture)
   return texture
 }
+
+const neonTextures = new Map<string, THREE.CanvasTexture>()
+
+// Neon tube lettering on a dark backing board, with a soft glow baked in.
+// Use as both map and emissiveMap so flickering emissiveIntensity reads as
+// the tubes buzzing.
+export function getNeonTexture(text: string, color: string): THREE.CanvasTexture {
+  const key = `${text}|${color}`
+  const cached = neonTextures.get(key)
+  if (cached) return cached
+
+  const W = 256
+  const H = 112
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const ctx = canvas.getContext('2d')!
+  roundRect(ctx, 2, 2, W - 4, H - 4, 14)
+  ctx.fillStyle = '#120d14'
+  ctx.fill()
+  ctx.strokeStyle = '#2c2430'
+  ctx.lineWidth = 4
+  ctx.stroke()
+
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = 'italic 800 64px "Brush Script MT", "Segoe Script", cursive, system-ui'
+  ctx.shadowColor = color
+  ctx.shadowBlur = 18
+  ctx.lineWidth = 7
+  ctx.strokeStyle = color
+  ctx.strokeText(text, W / 2, H / 2 + 2)
+  ctx.shadowBlur = 0
+  ctx.lineWidth = 2.5
+  ctx.strokeStyle = '#fff4f8'
+  ctx.strokeText(text, W / 2, H / 2 + 2)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  texture.needsUpdate = true
+  neonTextures.set(key, texture)
+  return texture
+}
+
+const panelTextures = new Map<string, THREE.CanvasTexture>()
+
+// Flat corporate signage panel: solid background with bold centred text.
+export function getPanelTexture(text: string, bg: string, fg: string): THREE.CanvasTexture {
+  const key = `${text}|${bg}|${fg}`
+  const cached = panelTextures.get(key)
+  if (cached) return cached
+
+  const W = 512
+  const H = 96
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = bg
+  ctx.fillRect(0, 0, W, H)
+  ctx.fillStyle = fg
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = '800 52px system-ui, sans-serif'
+  ctx.fillText(text, W / 2, H / 2 + 2, W - 40)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  texture.needsUpdate = true
+  panelTextures.set(key, texture)
+  return texture
+}
