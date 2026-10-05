@@ -36,6 +36,12 @@ export default function BootSequence({ engineStarted, onStart }: Props) {
   const typingDone = prefersReducedMotion || typingComplete
   const lines = prefersReducedMotion ? BOOT_LINES : typedLines
 
+  // Start downloading environment models behind the intro. Dynamic import
+  // keeps drei/three out of the first-load bundle.
+  useEffect(() => {
+    import('@/lib/envAssets').then((m) => m.preloadEnvAssets())
+  }, [])
+
   useEffect(() => {
     if (prefersReducedMotion || typingComplete) return
 

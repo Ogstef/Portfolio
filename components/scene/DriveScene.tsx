@@ -65,7 +65,9 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
             {GAPS.map((gap, i) => (
               <GapRamp key={i} gap={gap} />
             ))}
-            <Scenery />
+            <Suspense fallback={null}>
+              <Scenery />
+            </Suspense>
             <RoadDressing />
             <Car ref={vehicleRef} />
             <StopMarkers

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { getFrameAtDistance } from './trackPath'
+import { TRACK_LENGTH, getFrameAtDistance } from './trackPath'
 import { GAPS } from './gapJump'
 import { projects } from '@/data/projects'
 
@@ -20,15 +20,24 @@ const SPAWN_RADIUS = 8
 const SIGN_RADIUS = 16
 const CAMERA_CORRIDOR = 3 // half-width of the camera→sign sightline
 
+// Beyond either end of the road, s keeps going in a straight line along the
+// end tangent, so scenery can be laid out past the finale and behind spawn
+// instead of piling up on the end frame.
 export function trackToWorld(s: number, lateral: number, y = 0) {
-  const { position, right } = getFrameAtDistance(s)
-  return new THREE.Vector3(position.x + right.x * lateral, y, position.z + right.z * lateral)
+  const clamped = THREE.MathUtils.clamp(s, 0, TRACK_LENGTH)
+  const { position, tangent, right } = getFrameAtDistance(clamped)
+  const over = s - clamped
+  return new THREE.Vector3(
+    position.x + tangent.x * over + right.x * lateral,
+    y,
+    position.z + tangent.z * over + right.z * lateral,
+  )
 }
 
-function nearRamp(s: number, lateral: number) {
+function nearRamp(s: number, lateral: number, radius: number) {
   const al = Math.abs(lateral)
-  if (al < 3 || al > 37) return false
-  return RAMP_S.some((rs) => Math.abs(s - rs) < 6)
+  if (al < 3 - radius || al > 37 + radius) return false
+  return RAMP_S.some((rs) => Math.abs(s - rs) < 6 + radius)
 }
 
 // Every mandatory gap-jump's void spans the full lateral width there (see
@@ -36,6 +45,15 @@ function nearRamp(s: number, lateral: number) {
 // side would render floating over open air.
 export function inGapSpan(s: number, margin = 4) {
   return GAPS.some((gap) => s >= gap.baseDistance - margin && s <= gap.downRampEnd + margin)
+}
+
+// The ground itself is missing over each canyon as an axis-aligned world-Z
+// band spanning the full map width (Ground.tsx) — so far off to the side of
+// a curve, a point can be over the void even when its arc length s is
+// nowhere near a gap. This checks the actual world position.
+const VOID_Z_BOUNDS = GAPS.map((gap) => gap.getVoidZBounds())
+export function overVoid(z: number, margin = 4) {
+  return VOID_Z_BOUNDS.some(([a, b]) => z > a - margin && z < b + margin)
 }
 
 // Distance from point p to segment ab in the XZ plane.
@@ -50,21 +68,24 @@ function distToSegmentXZ(px: number, pz: number, ax: number, az: number, bx: num
 // Is world point (x,z) inside any stop's sign radius or cutscene sightline?
 // Tall things are blocked from both; short things only from the sign itself
 // (a low rock under the camera line doesn't hide anything).
-export function inStopCorridor(x: number, z: number, height: number) {
+export function inStopCorridor(x: number, z: number, height: number, radius = 0) {
   return projects.some((p) => {
     const [sx, , sz] = p.signPosition
     const [cx, , cz] = p.cameraApproach
-    if (Math.hypot(x - sx, z - sz) < SIGN_RADIUS) return true
-    return height > TALL && distToSegmentXZ(x, z, cx, cz, sx, sz) < CAMERA_CORRIDOR
+    if (Math.hypot(x - sx, z - sz) < SIGN_RADIUS + radius) return true
+    return height > TALL && distToSegmentXZ(x, z, cx, cz, sx, sz) < CAMERA_CORRIDOR + radius
   })
 }
 
-export function isBlocked(s: number, lateral: number, height = 0) {
+// `radius` is the item's footprint radius — every clearance is measured to
+// its edge, not its centre, so a wide boulder can't overhang the road.
+export function isBlocked(s: number, lateral: number, height = 0, radius = 0) {
   const al = Math.abs(lateral)
-  if (al < (height > TALL ? ROAD_CLEAR_TALL : ROAD_CLEAR)) return true
-  if (nearRamp(s, lateral)) return true
-  if (inGapSpan(s)) return true
+  if (al - radius < (height > TALL ? ROAD_CLEAR_TALL : ROAD_CLEAR)) return true
+  if (nearRamp(s, lateral, radius)) return true
+  if (inGapSpan(s, 4 + radius)) return true
   const p = trackToWorld(s, lateral)
-  if (Math.hypot(p.x, p.z) < SPAWN_RADIUS) return true
-  return inStopCorridor(p.x, p.z, height)
+  if (overVoid(p.z, 4 + radius)) return true
+  if (Math.hypot(p.x, p.z) < SPAWN_RADIUS + radius) return true
+  return inStopCorridor(p.x, p.z, height, radius)
 }

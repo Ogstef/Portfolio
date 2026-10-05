@@ -6,7 +6,7 @@ import { GAPS } from '@/lib/gapJump'
 import { TRACK_LENGTH } from '@/lib/trackPath'
 import { getBlotchTexture, getGroundTexture } from '@/lib/canvasTextures'
 import { mulberry32, pick, range } from '@/lib/random'
-import { inGapSpan, trackToWorld } from '@/lib/placement'
+import { inGapSpan, overVoid, trackToWorld } from '@/lib/placement'
 
 // Ground is split into a slab per gap in GAPS, each pair separated by that
 // gap's void (see lib/gapJump.ts) — there is no ground at all between them,
@@ -63,6 +63,7 @@ function usePatches(): Patch[] {
       const color = pick(rand, PATCH_TONES)
       if (inGapSpan(s, size * 0.7 + 4)) continue
       const p = trackToWorld(s, lateral)
+      if (overVoid(p.z, size * 0.7 + 2)) continue
       patches.push({ x: p.x, z: p.z, sx: size * stretch, sz: size / stretch, rotY, color })
     }
     return patches
