@@ -618,3 +618,70 @@ export function getPanelTexture(text: string, bg: string, fg: string): THREE.Can
   panelTextures.set(key, texture)
   return texture
 }
+
+// Greedy word-wrap for canvas text; returns the lines that fit `maxWidth`.
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const lines: string[] = []
+  let line = ''
+  for (const word of text.split(' ')) {
+    const next = line ? `${line} ${word}` : word
+    if (ctx.measureText(next).width > maxWidth && line) {
+      lines.push(line)
+      line = word
+    } else line = next
+  }
+  if (line) lines.push(line)
+  return lines
+}
+
+let finaleTexture: THREE.CanvasTexture | null = null
+
+// End-of-road sign: the project billboards' visual language (dark card,
+// accent rim) at roadside-sign scale. Drawn to canvas rather than drei
+// <Text>, whose default font is fetched from a CDN.
+export function getFinaleSignTexture(title: string, body: string, accent: string): THREE.CanvasTexture {
+  if (finaleTexture) return finaleTexture
+
+  const W = 2048
+  const H = 632
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const ctx = canvas.getContext('2d')!
+  const { r, g, b } = hexToRgb(accent)
+
+  ctx.fillStyle = accent
+  roundRect(ctx, 0, 0, W, H, 36)
+  ctx.fill()
+  const bg = ctx.createLinearGradient(0, 0, 0, H)
+  bg.addColorStop(0, '#12121f')
+  bg.addColorStop(1, '#0a0a14')
+  ctx.fillStyle = bg
+  roundRect(ctx, 14, 14, W - 28, H - 28, 26)
+  ctx.fill()
+  const glow = ctx.createRadialGradient(W * 0.5, 0, 0, W * 0.5, 0, W * 0.6)
+  glow.addColorStop(0, `rgba(${r},${g},${b},0.18)`)
+  glow.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = glow
+  ctx.fillRect(14, 14, W - 28, H - 28)
+
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = '#ffffff'
+  ctx.font = '800 104px system-ui, sans-serif'
+  ctx.fillText(title, W / 2, 150, W - 160)
+
+  ctx.fillStyle = accent
+  ctx.fillRect(W / 2 - 160, 232, 320, 8)
+
+  ctx.fillStyle = 'rgba(255,255,255,0.86)'
+  ctx.font = '500 62px system-ui, sans-serif'
+  const lines = wrapText(ctx, body, W - 260)
+  lines.forEach((line, i) => ctx.fillText(line, W / 2, 330 + i * 84))
+
+  finaleTexture = new THREE.CanvasTexture(canvas)
+  finaleTexture.colorSpace = THREE.SRGBColorSpace
+  finaleTexture.anisotropy = 8
+  finaleTexture.needsUpdate = true
+  return finaleTexture
+}

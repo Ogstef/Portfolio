@@ -99,11 +99,18 @@ export function crossesStopSightline(ax: number, az: number, bx: number, bz: num
   })
 }
 
-// Spots reserved for Phase 5 landmarks (AmbientLife.tsx) and the telephone
-// line (RoadDressing.tsx), so scenery never grows through them.
+// Spots reserved for landmarks (AmbientLife.tsx, DistantLandmarks.tsx,
+// FinaleSign.tsx) and the telephone line (RoadDressing.tsx), so scenery never grows through them.
 export const LANDMARKS = {
   windmill: { s: 120, lateral: -30, radius: 6 },
   pumpjack: { s: 230, lateral: 35, radius: 7 },
+  // Phase 6: water tower past the end of the road, and the finale arch +
+  // lamps straddling the road's end (FinaleSign.tsx).
+  waterTower: { s: TRACK_LENGTH + 30, lateral: -24, radius: 7 },
+  finale: { s: TRACK_LENGTH - 8, lateral: 0, radius: 11 },
+  // Far out on the right, past the drivable mesa band (60–120 m + footprint);
+  // Horizon.tsx keeps its mesa ring clear of it.
+  radioMast: { s: 300, lateral: 150, radius: 35 },
 } as const
 export const POLE_LATERAL = -9
 const POLE_BAND = 1.5

@@ -28,6 +28,11 @@ import StopDiorama from './StopDiorama'
 import AmbientLife from './AmbientLife'
 import DustTrail from './DustTrail'
 import AfterFirstFrame from './AfterFirstFrame'
+import DistantLandmarks from './DistantLandmarks'
+import FinaleSign from './FinaleSign'
+import EasterEgg from './EasterEgg'
+import PostFX from './PostFX'
+import ShaderWarmup from './ShaderWarmup'
 import SkyLife from './SkyLife'
 import Horizon from './Horizon'
 import PhysicsDebug from './PhysicsDebug'
@@ -49,6 +54,9 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
     <KeyboardControls map={keyMap}>
       <Canvas
         shadows
+        // Capped at 1.5× pixel density: on retina screens the default 2×
+        // renders ~78% more pixels (plus bloom on top) for a barely visible gain.
+        dpr={[1, 1.5]}
         camera={{ position: [0, 6, -14], fov: 60 }}
         className="w-full h-full"
       >
@@ -61,6 +69,7 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
         <Stars radius={150} depth={60} count={3000} factor={3} fade speed={0.4} />
         <SkyLife />
         <Horizon />
+        <DistantLandmarks />
 
         <Suspense fallback={null}>
           <Physics gravity={[0, -20, 0]}>
@@ -76,6 +85,8 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
             <RoadDressing />
             <CanyonWalls />
             <StopDiorama />
+            <FinaleSign />
+            <EasterEgg />
             <Car ref={vehicleRef} />
             <StopMarkers
               projects={projects}
@@ -100,6 +111,10 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
           <AfterFirstFrame>
             <AmbientLife />
             <DustTrail vehicleRef={vehicleRef} />
+            <PostFX />
+            <Suspense fallback={null}>
+              <ShaderWarmup />
+            </Suspense>
           </AfterFirstFrame>
           <RenderStats vehicleRef={vehicleRef} />
         </Suspense>
