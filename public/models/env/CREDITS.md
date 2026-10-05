@@ -40,6 +40,20 @@ gltf-transform meshopt renamed.glb nature.glb
 meshopt rather than Draco: the whole file is 48 KB, less than a sixth of
 the Draco decoder, and drei's `useGLTF` already bundles the meshopt decoder.
 
+## props.glb
+
+Source: **Car Kit** by Kenney — https://kenney.nl/assets/car-kit (the copy
+already in this repo under `kenney_car-kit/`)
+Licence: CC0 1.0 (per `kenney_car-kit/License.txt`)
+
+| Node | Used as |
+|---|---|
+| `cone` | traffic cones lining each gap-jump run-in |
+
+Pipeline: `gltf-transform copy` (embeds `Textures/colormap.png`), scene
+renamed to `env-props` (same name-collision reason as above), then
+`gltf-transform meshopt`.
+
 ## Procedural stand-ins (no CC0 model found)
 
 - **Barrel cactus** — no barrel cactus or prickly pear in Kenney's Nature,

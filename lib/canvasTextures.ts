@@ -366,3 +366,181 @@ export function getBlotchTexture(): THREE.CanvasTexture {
   blotchTexture.needsUpdate = true
   return blotchTexture
 }
+
+let plankTexture: THREE.CanvasTexture | null = null
+
+// Weathered wood planks for the ramps: boards run along U (stacked in V),
+// each with its own tint, grain streaks, a staggered butt joint and nails.
+// Tiles seamlessly — joints and nails are drawn inside each board.
+export function getPlankTexture(): THREE.CanvasTexture {
+  if (plankTexture) return plankTexture
+
+  const size = 256
+  const boards = 6
+  const boardH = size / boards
+  const rand = mulberry32(7171)
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  for (let b = 0; b < boards; b++) {
+    const y = b * boardH
+    const tint = (rand() - 0.5) * 26
+    ctx.fillStyle = `rgb(${138 + tint},${106 + tint * 0.85},${66 + tint * 0.6})`
+    ctx.fillRect(0, y, size, boardH)
+
+    for (let g = 0; g < 14; g++) {
+      ctx.strokeStyle = `rgba(70,45,22,${0.12 + rand() * 0.18})`
+      ctx.lineWidth = 0.6 + rand() * 1.1
+      const gy = y + 3 + rand() * (boardH - 6)
+      ctx.beginPath()
+      ctx.moveTo(0, gy)
+      ctx.bezierCurveTo(size * 0.33, gy + (rand() - 0.5) * 4, size * 0.66, gy + (rand() - 0.5) * 4, size, gy)
+      ctx.stroke()
+    }
+
+    const joint = 20 + rand() * (size - 40)
+    ctx.fillStyle = 'rgba(40,26,12,0.85)'
+    ctx.fillRect(joint, y, 2, boardH)
+    ctx.fillStyle = 'rgba(30,24,20,0.9)'
+    for (const nx of [joint - 6, joint + 8]) {
+      for (const ny of [y + boardH * 0.28, y + boardH * 0.72]) {
+        ctx.beginPath()
+        ctx.arc(nx, ny, 1.4, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+
+    ctx.fillStyle = 'rgba(38,24,12,0.95)'
+    ctx.fillRect(0, y, size, 2)
+  }
+
+  plankTexture = finishTiledTexture(canvas)
+  return plankTexture
+}
+
+function diamondPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(cx, cy - r)
+  ctx.lineTo(cx + r, cy)
+  ctx.lineTo(cx, cy + r)
+  ctx.lineTo(cx - r, cy)
+  ctx.closePath()
+}
+
+const jumpSignTextures = new Map<string, THREE.CanvasTexture>()
+
+// Yellow diamond "JUMP AHEAD" warning sign with a ramp-and-arc pictogram,
+// plus a distance plate underneath. Transparent outside the shapes — use
+// with alphaTest.
+export function getJumpSignTexture(distanceLabel: string): THREE.CanvasTexture {
+  const cached = jumpSignTextures.get(distanceLabel)
+  if (cached) return cached
+
+  const W = 256
+  const H = 340
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const ctx = canvas.getContext('2d')!
+  const cx = W / 2
+  const cy = 124
+  const r = 120
+
+  diamondPath(ctx, cx, cy, r)
+  ctx.fillStyle = '#111'
+  ctx.fill()
+  diamondPath(ctx, cx, cy, r - 9)
+  ctx.fillStyle = '#f5c518'
+  ctx.fill()
+  diamondPath(ctx, cx, cy, r - 15)
+  ctx.strokeStyle = '#111'
+  ctx.lineWidth = 3
+  ctx.stroke()
+
+  // Pictogram: wedge ramp, dashed flight arc, landing block.
+  ctx.fillStyle = '#111'
+  ctx.beginPath()
+  ctx.moveTo(cx - 62, cy + 2)
+  ctx.lineTo(cx - 22, cy + 2)
+  ctx.lineTo(cx - 22, cy - 18)
+  ctx.closePath()
+  ctx.fill()
+  ctx.fillRect(cx + 26, cy - 18, 36, 20)
+  ctx.setLineDash([7, 6])
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.moveTo(cx - 22, cy - 22)
+  ctx.quadraticCurveTo(cx + 2, cy - 64, cx + 30, cy - 24)
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = '900 30px system-ui, sans-serif'
+  ctx.fillText('JUMP', cx, cy + 32)
+  ctx.font = '900 22px system-ui, sans-serif'
+  ctx.fillText('AHEAD', cx, cy + 60)
+
+  // Distance plate
+  roundRect(ctx, cx - 70, 262, 140, 66, 8)
+  ctx.fillStyle = '#111'
+  ctx.fill()
+  roundRect(ctx, cx - 64, 268, 128, 54, 5)
+  ctx.fillStyle = '#f5c518'
+  ctx.fill()
+  ctx.fillStyle = '#111'
+  ctx.font = '900 34px system-ui, sans-serif'
+  ctx.fillText(distanceLabel, cx, 296)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  texture.needsUpdate = true
+  jumpSignTextures.set(distanceLabel, texture)
+  return texture
+}
+
+const chevronTextures = new Map<string, THREE.CanvasTexture>()
+
+// Black board with three yellow chevrons pointing `dir` — hazard markers
+// either side of a gap-jump ramp, pointing in towards it.
+export function getChevronTexture(dir: 'left' | 'right'): THREE.CanvasTexture {
+  const cached = chevronTextures.get(dir)
+  if (cached) return cached
+
+  const W = 256
+  const H = 160
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#141414'
+  ctx.fillRect(0, 0, W, H)
+  ctx.strokeStyle = '#f5c518'
+  ctx.lineWidth = 6
+  ctx.strokeRect(5, 5, W - 10, H - 10)
+
+  ctx.fillStyle = '#f5c518'
+  const s = dir === 'left' ? -1 : 1
+  for (let i = 0; i < 3; i++) {
+    const x = W / 2 + (i - 1) * 64
+    ctx.beginPath()
+    ctx.moveTo(x - s * 26, 26)
+    ctx.lineTo(x - s * 6, 26)
+    ctx.lineTo(x + s * 26, H / 2)
+    ctx.lineTo(x - s * 6, H - 26)
+    ctx.lineTo(x - s * 26, H - 26)
+    ctx.lineTo(x + s * 6, H / 2)
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  texture.needsUpdate = true
+  chevronTextures.set(dir, texture)
+  return texture
+}

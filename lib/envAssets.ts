@@ -6,6 +6,7 @@ import { useGLTF } from '@react-three/drei'
 // Sources and licences: public/models/env/CREDITS.md.
 export const ENV_ASSETS = {
   nature: '/models/env/nature.glb',
+  props: '/models/env/props.glb',
 } as const
 
 // No Draco in any env asset — pass false so drei never wires up its

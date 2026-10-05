@@ -23,6 +23,7 @@ import { GAPS } from '@/lib/gapJump'
 import FallSafety from './FallSafety'
 import Scenery from './Scenery'
 import RoadDressing from './RoadDressing'
+import CanyonWalls from './CanyonWalls'
 import SkyLife from './SkyLife'
 import Horizon from './Horizon'
 import PhysicsDebug from './PhysicsDebug'
@@ -69,6 +70,7 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
               <Scenery />
             </Suspense>
             <RoadDressing />
+            <CanyonWalls />
             <Car ref={vehicleRef} />
             <StopMarkers
               projects={projects}

@@ -1,6 +1,7 @@
 import { RigidBody, CuboidCollider } from '@react-three/rapier'
-import * as THREE from 'three'
+import { useMemo } from 'react'
 import { getFrameAtDistance } from '@/lib/trackPath'
+import { getPlankMaterial, plankBox } from './plank'
 
 // Ramp rises from road edge (x=±ROAD_EDGE, y=0) outward to RAMP_TOP_H.
 // Base size scaled up from the original (2.0, 9) for a longer, higher jump —
@@ -19,7 +20,6 @@ const PLAT_THICK     = 0.4
 // `scale` since it's a ratio, so every ramp size shares the same proven slope.
 const RAMP_ANGLE  = Math.atan2(RAMP_TOP_H, RAMP_RUN)  // ≈ 0.218 rad
 
-const mat = new THREE.MeshStandardMaterial({ color: '#7a5a38', roughness: 0.8, metalness: 0.1 })
 
 function RampSet({ distance, side, scale = 1 }: { distance: number; side: 'left' | 'right'; scale?: number }) {
   const rampRun  = RAMP_RUN * scale
@@ -52,6 +52,13 @@ function RampSet({ distance, side, scale = 1 }: { distance: number; side: 'left'
   const platCY  = cornerY + platThick / 2
 
   const { position, yaw } = getFrameAtDistance(distance)
+  const mat = getPlankMaterial()
+  // Same box dimensions as the colliders. The car runs up these along local
+  // X, so boards lie across it, along Z.
+  // Memoised: these meshes sit inside RigidBody, which derives its default
+  // colliders from them — a stable geometry keeps those colliders stable.
+  const rampGeo = useMemo(() => plankBox(rampRun, rampThick, rampWidth, 'z'), [rampRun, rampThick, rampWidth])
+  const platGeo = useMemo(() => plankBox(platD, platThick, rampWidth, 'z'), [platD, platThick, rampWidth])
 
   return (
     <group position={[position.x, 0, position.z]} rotation={[0, yaw, 0]}>
@@ -62,17 +69,13 @@ function RampSet({ distance, side, scale = 1 }: { distance: number; side: 'left'
           position={[rampCX, rampCY, 0]}
           rotation={[0, 0, angle]}
         />
-        <mesh position={[rampCX, rampCY, 0]} rotation={[0, 0, angle]} receiveShadow castShadow material={mat}>
-          <boxGeometry args={[rampRun, rampThick, rampWidth]} />
-        </mesh>
+        <mesh position={[rampCX, rampCY, 0]} rotation={[0, 0, angle]} receiveShadow castShadow material={mat} geometry={rampGeo} />
       </RigidBody>
 
       {/* Flat launch platform at the top */}
       <RigidBody type="fixed">
         <CuboidCollider args={[platD / 2, platThick / 2, rampWidth / 2]} position={[platCX, platCY, 0]} />
-        <mesh position={[platCX, platCY, 0]} receiveShadow castShadow material={mat}>
-          <boxGeometry args={[platD, platThick, rampWidth]} />
-        </mesh>
+        <mesh position={[platCX, platCY, 0]} receiveShadow castShadow material={mat} geometry={platGeo} />
       </RigidBody>
     </group>
   )
