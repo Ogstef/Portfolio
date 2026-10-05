@@ -25,6 +25,9 @@ import Scenery from './Scenery'
 import RoadDressing from './RoadDressing'
 import CanyonWalls from './CanyonWalls'
 import StopDiorama from './StopDiorama'
+import AmbientLife from './AmbientLife'
+import DustTrail from './DustTrail'
+import AfterFirstFrame from './AfterFirstFrame'
 import SkyLife from './SkyLife'
 import Horizon from './Horizon'
 import PhysicsDebug from './PhysicsDebug'
@@ -94,6 +97,10 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
             <PhysicsDebug vehicleRef={vehicleRef} />
           </Physics>
           <FollowCamera vehicleRef={vehicleRef} activeProject={activeProject} />
+          <AfterFirstFrame>
+            <AmbientLife />
+            <DustTrail vehicleRef={vehicleRef} />
+          </AfterFirstFrame>
           <RenderStats vehicleRef={vehicleRef} />
         </Suspense>
       </Canvas>

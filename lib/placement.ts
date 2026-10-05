@@ -8,10 +8,16 @@ import { projects } from '@/data/projects'
 // nothing ever lands on a ramp, over a canyon void, on the road, in spawn,
 // or between a stop's cutscene camera and its sign.
 
-// Ramps (see Ramps.tsx) occupy roughly lateral offset in [3,37] (mirrored —
-// the largest, scale=1.4 ramp reaches ROAD_EDGE + RAMP_RUN*1.4 + PLAT_D*1.4 =
-// 4+19.6+12.6=36.2) around these arc-length distances
-export const RAMP_S = [22, 55, 75, 335]
+// Side ramps (see Ramps.tsx) occupy lateral offset [3,37] on ONE side of the
+// road around these arc-length distances (the largest, scale=1.4 ramp
+// reaches ROAD_EDGE + RAMP_RUN*1.4 + PLAT_D*1.4 = 4+19.6+12.6=36.2). Side
+// +1 = Ramps.tsx side="right" = positive lateral (the track's right vector).
+export const RAMPS: ReadonlyArray<{ s: number; side: 1 | -1 }> = [
+  { s: 22, side: 1 },
+  { s: 55, side: -1 },
+  { s: 75, side: 1 },
+  { s: 335, side: 1 },
+]
 
 const ROAD_CLEAR = 6
 const ROAD_CLEAR_TALL = 7.5
@@ -34,10 +40,11 @@ export function trackToWorld(s: number, lateral: number, y = 0) {
   )
 }
 
-function nearRamp(s: number, lateral: number, radius: number) {
-  const al = Math.abs(lateral)
-  if (al < 3 - radius || al > 37 + radius) return false
-  return RAMP_S.some((rs) => Math.abs(s - rs) < 6 + radius)
+export function nearRamp(s: number, lateral: number, radius = 0) {
+  return RAMPS.some((r) => {
+    const out = lateral * r.side // distance out on the ramp's own side
+    return out > 3 - radius && out < 37 + radius && Math.abs(s - r.s) < 6 + radius
+  })
 }
 
 // Every mandatory gap-jump's void spans the full lateral width there (see
@@ -77,9 +84,44 @@ export function inStopCorridor(x: number, z: number, height: number, radius = 0)
   })
 }
 
+// Does the wire/segment a→b pass through any stop's camera→sign sightline?
+// Sampled every metre — plenty for straight runs of tens of metres.
+export function crossesStopSightline(ax: number, az: number, bx: number, bz: number, margin = CAMERA_CORRIDOR) {
+  const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az)))
+  return projects.some((p) => {
+    const [sx, , sz] = p.signPosition
+    const [cx, , cz] = p.cameraApproach
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps
+      if (distToSegmentXZ(ax + (bx - ax) * t, az + (bz - az) * t, cx, cz, sx, sz) < margin) return true
+    }
+    return false
+  })
+}
+
+// Spots reserved for Phase 5 landmarks (AmbientLife.tsx) and the telephone
+// line (RoadDressing.tsx), so scenery never grows through them.
+export const LANDMARKS = {
+  windmill: { s: 120, lateral: -30, radius: 6 },
+  pumpjack: { s: 230, lateral: 35, radius: 7 },
+} as const
+export const POLE_LATERAL = -9
+const POLE_BAND = 1.5
+
+function inReserved(s: number, lateral: number, radius: number) {
+  if (Math.abs(lateral - POLE_LATERAL) < POLE_BAND + radius && s > -10 && s < TRACK_LENGTH + 10) return true
+  const p = trackToWorld(s, lateral)
+  return Object.values(LANDMARKS).some((l) => {
+    const c = trackToWorld(l.s, l.lateral)
+    return Math.hypot(p.x - c.x, p.z - c.z) < l.radius + radius
+  })
+}
+
+// Clearance rules only — road, ramps, canyons, spawn, stop sightlines. The
+// reserved landmarks/poles use this directly (they ARE the reserved things).
 // `radius` is the item's footprint radius — every clearance is measured to
 // its edge, not its centre, so a wide boulder can't overhang the road.
-export function isBlocked(s: number, lateral: number, height = 0, radius = 0) {
+export function isClearanceBlocked(s: number, lateral: number, height = 0, radius = 0) {
   const al = Math.abs(lateral)
   if (al - radius < (height > TALL ? ROAD_CLEAR_TALL : ROAD_CLEAR)) return true
   if (nearRamp(s, lateral, radius)) return true
@@ -88,4 +130,9 @@ export function isBlocked(s: number, lateral: number, height = 0, radius = 0) {
   if (overVoid(p.z, 4 + radius)) return true
   if (Math.hypot(p.x, p.z) < SPAWN_RADIUS + radius) return true
   return inStopCorridor(p.x, p.z, height, radius)
+}
+
+// Everything decorative goes through this: clearances plus reserved spots.
+export function isBlocked(s: number, lateral: number, height = 0, radius = 0) {
+  return isClearanceBlocked(s, lateral, height, radius) || inReserved(s, lateral, radius)
 }

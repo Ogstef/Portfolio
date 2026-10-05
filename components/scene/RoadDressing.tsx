@@ -2,13 +2,23 @@
 
 import { Suspense, useMemo } from 'react'
 import * as THREE from 'three'
-import { Instances, Instance, useGLTF } from '@react-three/drei'
+import { Instances, Instance, Line, useGLTF } from '@react-three/drei'
 import { TRACK_LENGTH, getFrameAtDistance } from '@/lib/trackPath'
 import { GAPS } from '@/lib/gapJump'
-import { RAMP_S, inGapSpan, inStopCorridor, trackToWorld } from '@/lib/placement'
+import {
+  POLE_LATERAL,
+  RAMPS,
+  crossesStopSightline,
+  inGapSpan,
+  inStopCorridor,
+  isClearanceBlocked,
+  trackToWorld,
+} from '@/lib/placement'
 import { getChevronTexture, getJumpSignTexture } from '@/lib/canvasTextures'
 import { ENV_ASSETS, ENV_USE_DRACO } from '@/lib/envAssets'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import StaticInstances, { GltfInstances, placeMatrix } from './StaticInstances'
+import { wallFaceZ } from './CanyonWalls'
 
 // Roadside furniture — visual only, no colliders (ENVIRONMENT_PLAN.md §2.1).
 
@@ -33,9 +43,9 @@ function usePosts(): Post[] {
     const posts: Post[] = []
     for (let s = POST_SPACING / 2; s < TRACK_LENGTH; s += POST_SPACING) {
       if (inGapSpan(s, 2)) continue
-      if (RAMP_S.some((rs) => Math.abs(s - rs) < RAMP_CLEAR)) continue
       const { position, right, yaw } = getFrameAtDistance(s)
       for (const side of [-1, 1]) {
+        if (RAMPS.some((r) => r.side === side && Math.abs(s - r.s) < RAMP_CLEAR)) continue
         posts.push({
           x: position.x + right.x * side * POST_LATERAL,
           z: position.z + right.z * side * POST_LATERAL,
@@ -191,11 +201,135 @@ function GapApproach() {
   )
 }
 
+// ─── Telephone line ───────────────────────────────────────────────────────
+// Wooden poles down the left of the road with two sagging wires. The line
+// breaks wherever a span would cross a canyon (snapped wires dangle into
+// the void) or a stop camera's sightline to its sign (ends dangle loose).
+
+const POLE_SPACING = 25
+const POLE_H = 7.2
+const ARM_Y = 6.6
+const ARM_HALF = 0.75 // crossarm half-length; the two wires hang from its ends
+const WIRE_Y = ARM_Y + 0.15
+const MAX_SPAN = 32 // longer than this (a pole was skipped) → break the line
+const SAG_PER_M2 = 0.0014 // catenary sag ≈ k·span², ~0.9 m on a 25 m span
+
+const poleGeo = mergeGeometries([
+  new THREE.CylinderGeometry(0.11, 0.15, POLE_H, 7).translate(0, POLE_H / 2, 0),
+  new THREE.BoxGeometry(ARM_HALF * 2 + 0.2, 0.14, 0.12).translate(0, ARM_Y, 0), // crossarm across the road direction
+  ...[-1, 1].map((k) => new THREE.CylinderGeometry(0.05, 0.05, 0.16, 6).translate(k * ARM_HALF, ARM_Y + 0.13, 0)),
+])!
+const poleMat = new THREE.MeshStandardMaterial({ color: '#4d3b2b', roughness: 1 })
+
+type Vec3 = [number, number, number]
+
+// Sagging wire between two points as a polyline (parabolic approximation).
+// Never dips below the ground: a span that would sag into the dirt (e.g.
+// down to a canyon lip) lies along it instead.
+const WIRE_GROUND_Y = 0.04
+function catenary(a: Vec3, b: Vec3, steps = 16): Vec3[] {
+  const span = Math.hypot(b[0] - a[0], b[2] - a[2])
+  const sag = SAG_PER_M2 * span * span
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const t = i / steps
+    const y = a[1] + (b[1] - a[1]) * t - sag * 4 * t * (1 - t)
+    return [a[0] + (b[0] - a[0]) * t, Math.max(WIRE_GROUND_Y, y), a[2] + (b[2] - a[2]) * t] as Vec3
+  })
+}
+
+// Loose end hanging from an attach point, drifting `dir` (unit XZ) a little.
+function dangle(a: Vec3, dir: [number, number], drop: number): Vec3[] {
+  return [0, 0.25, 0.5, 0.75, 1].map((t) => [a[0] + dir[0] * 1.2 * t, a[1] - drop * t * t, a[2] + dir[1] * 1.2 * t] as Vec3)
+}
+
+type Pole = { s: number; x: number; z: number; yaw: number }
+
+function buildTelephoneLine() {
+  const poles: Pole[] = []
+  for (let s0 = 6; s0 < TRACK_LENGTH; s0 += POLE_SPACING) {
+    // A blocked slot slides up to 8 m either way before it's dropped.
+    const s = [0, -3, 3, -6, 6, -8, 8].map((d) => s0 + d).find((c) => !isClearanceBlocked(c, POLE_LATERAL, POLE_H, 0.3))
+    if (s === undefined) continue
+    const p = trackToWorld(s, POLE_LATERAL)
+    poles.push({ s, x: p.x, z: p.z, yaw: getFrameAtDistance(s).yaw })
+  }
+
+  // Wire attach points: the crossarm runs along the track's right vector.
+  const attach = (pole: Pole, k: number): Vec3 => {
+    const { right } = getFrameAtDistance(pole.s)
+    return [pole.x + right.x * k * ARM_HALF, WIRE_Y, pole.z + right.z * k * ARM_HALF]
+  }
+
+  const segments: Vec3[] = [] // pairs, for one <Line segments> draw
+  const addPolyline = (pts: Vec3[]) => {
+    for (let i = 0; i < pts.length - 1; i++) segments.push(pts[i], pts[i + 1])
+  }
+
+  // Snapped wire over a canyon edge: lies over the lip, then hangs down the
+  // rock face — draped just clear of the wall surface (CanyonWalls'
+  // wallFaceZ), never through it. `length` = metres hanging below the lip.
+  const drape = (gapIndex: number, which: 'near' | 'far', lip: Vec3, length: number): Vec3[] => {
+    const out = which === 'near' ? 1 : -1 // direction into the void along Z
+    const pts: Vec3[] = [[lip[0], 0.04, lip[2] + out * 0.05]]
+    for (const y of [-0.15, -0.5, -1, -1.6, -2.3, -3.1, -4, -5].filter((y) => -y <= length)) {
+      pts.push([lip[0] + y * 0.04, y, wallFaceZ(gapIndex, which, lip[0], y)])
+    }
+    return pts
+  }
+
+  for (let i = 0; i < poles.length - 1; i++) {
+    const a = poles[i]
+    const b = poles[i + 1]
+    const gapIndex = GAPS.findIndex((g) => g.baseDistance > a.s && g.baseDistance < b.s)
+    const gap = GAPS[gapIndex]
+    const along: [number, number] = [(b.x - a.x) / Math.hypot(b.x - a.x, b.z - a.z), (b.z - a.z) / Math.hypot(b.x - a.x, b.z - a.z)]
+
+    for (const k of [-1, 1]) {
+      const pa = attach(a, k)
+      const pb = attach(b, k)
+      if (gap) {
+        // Snapped over the canyon: each side sags to the lip, then hangs
+        // down the wall into the void.
+        const [za, zb] = gap.getVoidZBounds()
+        const xAtZ = (z: number) => pa[0] + (pb[0] - pa[0]) * ((z - pa[2]) / (pb[2] - pa[2]))
+        const lipA: Vec3 = [xAtZ(za), 0.04, za - 0.06]
+        const lipB: Vec3 = [xAtZ(zb), 0.04, zb + 0.06]
+        addPolyline([...catenary(pa, lipA), ...drape(gapIndex, 'near', lipA, 4.2 + k * 0.7)])
+        addPolyline([...catenary(pb, lipB), ...drape(gapIndex, 'far', lipB, 3.4 - k * 0.6)])
+      } else if (Math.hypot(b.x - a.x, b.z - a.z) > MAX_SPAN || crossesStopSightline(a.x, a.z, b.x, b.z)) {
+        // Broken span (a skipped pole, or it would cut across a stop's
+        // cutscene view): loose ends hang from both poles.
+        addPolyline(dangle(pa, along, 2.6 + k * 0.4))
+        addPolyline(dangle(pb, [-along[0], -along[1]], 2.4 - k * 0.3))
+      } else {
+        addPolyline(catenary(pa, pb))
+      }
+    }
+  }
+
+  // Yaw = track yaw puts the crossarm (local X) along the right vector,
+  // i.e. across the road, matching attach().
+  const poleMatrices = poles.map((p) => placeMatrix(p.x, 0, p.z, p.yaw))
+  return { poleMatrices, segments }
+}
+
+const TELEPHONE = buildTelephoneLine()
+
+function TelephoneLine() {
+  return (
+    <>
+      <StaticInstances geometry={poleGeo} material={poleMat} matrices={TELEPHONE.poleMatrices} castShadow />
+      <Line points={TELEPHONE.segments} segments color="#1a1512" lineWidth={1.1} />
+    </>
+  )
+}
+
 export default function RoadDressing() {
   return (
     <>
       <ReflectorPosts />
       <GapApproach />
+      <TelephoneLine />
     </>
   )
 }

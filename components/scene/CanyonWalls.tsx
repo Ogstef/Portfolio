@@ -43,11 +43,45 @@ function voidCenterX(gap: GapJump) {
   return getFrameAtDistance((gap.launchPlatEnd + gap.landingPlatStart) / 2).position.x
 }
 
+const wallSeed = (gapIndex: number, which: 'near' | 'far') => 900 + gapIndex * 2 + (which === 'far' ? 1 : 0)
+
+// How far (≥0) the wall juts into the void at (x, y). Pinned at the lip,
+// full bulge from ~3 m down. Shared by buildWall and wallFaceZ.
+function bulgeAt(noise: (x: number, y: number) => number, x: number, y: number) {
+  const n = noise(x * 0.12, y * 0.18) * 0.6 + noise(x * 0.35, y * 0.5) * 0.3 + noise(x * 1.1, y * 1.3) * 0.1
+  return { n, bulge: n * MAX_BULGE * Math.min(1, -y / 3) }
+}
+
+const noiseCache = new Map<number, (x: number, y: number) => number>()
+const noiseFor = (seed: number) => {
+  let n = noiseCache.get(seed)
+  if (!n) noiseCache.set(seed, (n = createNoise2D(seed)))
+  return n
+}
+
+// World Z of a point just clear of a canyon wall's rock face at (x, y) —
+// for draping things (the snapped telephone wires) down the wall without
+// clipping into it. Conservative: takes the largest bulge over the
+// surrounding grid cell, since vertices are jittered sideways and faces
+// interpolate between rows.
+export function wallFaceZ(gapIndex: number, which: 'near' | 'far', x: number, y: number, clearance = 0.12) {
+  const noise = noiseFor(wallSeed(gapIndex, which))
+  const [za, zb] = GAPS[gapIndex].getVoidZBounds()
+  let maxBulge = 0
+  for (let dx = -STEP_X; dx <= STEP_X; dx += 0.5) {
+    for (const dy of [-STEP_Y, 0, STEP_Y]) {
+      const yy = Math.min(0, y + dy)
+      maxBulge = Math.max(maxBulge, bulgeAt(noise, x + dx, yy).bulge)
+    }
+  }
+  return which === 'near' ? za + maxBulge + clearance : zb - maxBulge - clearance
+}
+
 // One wall as an indexed grid in the X/Y plane at z = `edgeZ`, displaced
 // `facing` (+1 = towards +Z) into the void by layered noise. The top row is
 // pinned to the edge so it meets the ground slab without a seam.
 function buildWall(cx: number, edgeZ: number, facing: 1 | -1, seed: number) {
-  const noise = createNoise2D(seed)
+  const noise = noiseFor(seed)
   const cols = Math.round((HALF_SPAN * 2) / STEP_X)
   const rows = Math.round(DEPTH / STEP_Y)
   const positions: number[] = []
@@ -59,11 +93,8 @@ function buildWall(cx: number, edgeZ: number, facing: 1 | -1, seed: number) {
     const y = -(r / rows) * DEPTH
     for (let k = 0; k <= cols; k++) {
       const x = cx - HALF_SPAN + k * STEP_X
-      const n =
-        noise(x * 0.12, y * 0.18) * 0.6 + noise(x * 0.35, y * 0.5) * 0.3 + noise(x * 1.1, y * 1.3) * 0.1
-      // Pinned at the lip, full bulge from ~3 m down.
+      const { n, bulge } = bulgeAt(noise, x, y)
       const reach = Math.min(1, -y / 3)
-      const bulge = n * MAX_BULGE * reach
       positions.push(x + (noise(x * 0.5 + 9, y * 0.5) - 0.5) * 0.8 * reach, y, edgeZ + facing * bulge)
 
       // Strata: wavy horizontal bands, darker with depth.
@@ -166,7 +197,7 @@ const WALLS = mergeGeometries(
   GAPS.flatMap((gap, i) => {
     const cx = voidCenterX(gap)
     const [za, zb] = gap.getVoidZBounds()
-    return [buildWall(cx, za, 1, 900 + i * 2), buildWall(cx, zb, -1, 901 + i * 2)]
+    return [buildWall(cx, za, 1, wallSeed(i, 'near')), buildWall(cx, zb, -1, wallSeed(i, 'far'))]
   }),
 )!
 const FLOORS = mergeGeometries(
