@@ -105,7 +105,7 @@ export default function DriveScene({ activeProject, engineStarted, onEnterStop, 
             <FallSafety vehicleRef={vehicleRef} />
             <VehicleUpright vehicleRef={vehicleRef} />
             <VehicleYawLimiter vehicleRef={vehicleRef} />
-            <PhysicsDebug vehicleRef={vehicleRef} />
+            {process.env.NODE_ENV !== 'production' && <PhysicsDebug vehicleRef={vehicleRef} />}
           </Physics>
           <FollowCamera vehicleRef={vehicleRef} activeProject={activeProject} />
           <AfterFirstFrame>
