@@ -17,7 +17,7 @@ export default function ResumePage() {
 
       <h1 className="mb-2 text-3xl font-bold">Stefanos Georgiou</h1>
       <p className="mb-10 text-white/60">
-        Backend Java/Spring Boot engineer · ~2 years professional experience ·
+        Backend Java/Spring Boot engineer · ~3 years professional experience ·
         Accenture / Eurobank CRM · targeting senior &amp; remote roles
       </p>
 
